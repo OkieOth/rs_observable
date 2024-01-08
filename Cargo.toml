@@ -2,4 +2,5 @@
     resolver = "2"
 members = [
     "rs_observable",
+    "examples/tokio_test"
 ]

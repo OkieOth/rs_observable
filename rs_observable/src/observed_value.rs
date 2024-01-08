@@ -8,6 +8,8 @@ pub struct ObservedValue<T: Clone> {
     value: Option<T>,
 }
 
+unsafe impl<T: Clone> Send for Observable<T> {}
+
 impl<T: Clone> ObservedValue<T> {
     pub fn new() -> Self {
         ObservedValue {
