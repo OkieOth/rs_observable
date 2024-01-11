@@ -1,14 +1,12 @@
 use crate::observable::{Observable, Observer};
 use std::ops::{Deref, DerefMut};
-use std::sync::Arc;
+use std::rc::Rc;
 use std::cell::RefCell;
 
 pub struct ObservedValue<T: Clone> {
     observable: Observable<Option<T>>,
     value: Option<T>,
 }
-
-unsafe impl<T: Clone> Send for Observable<T> {}
 
 impl<T: Clone> ObservedValue<T> {
     pub fn new() -> Self {
@@ -28,7 +26,7 @@ impl<T: Clone> ObservedValue<T> {
         self.observable.notify_observers(None);
     }
 
-    pub fn register(&mut self, observer: Arc<RefCell<dyn Observer<Option<T>> + Send + Sync>>) -> u32 {
+    pub fn register(&mut self, observer: Rc<RefCell<dyn Observer<Option<T>> + Send + Sync>>) -> u32 {
         self.observable.register(observer)
     }
 
@@ -100,18 +98,18 @@ mod tests {
 
     #[test]
     fn test_01() {
-        use std::sync::Arc;
+        use std::rc::Rc;
         use std::cell::RefCell;
         use crate::observable::Observable;
 
         let mut o = ObservedValue::<MyString>::new();
 
 
-        let s1 = Arc::new(RefCell::new(ObserverString::new()));
+        let s1 = Rc::new(RefCell::new(ObserverString::new()));
         let s1_id = o.register(s1.clone());
-        let s2 = Arc::new(RefCell::new(ObserverString::new()));
+        let s2 = Rc::new(RefCell::new(ObserverString::new()));
         o.register(s2.clone());
-        let s3 = Arc::new(RefCell::new(ObserverString::new())); 
+        let s3 = Rc::new(RefCell::new(ObserverString::new())); 
         o.register(s3.clone());
 
 
@@ -126,7 +124,7 @@ mod tests {
         assert_eq!(*s2.borrow().value.as_ref().unwrap(), v);
         assert_eq!(*s3.borrow().value.as_ref().unwrap(), v);
 
-        let s4 = Arc::new(RefCell::new(ObserverString::new()));
+        let s4 = Rc::new(RefCell::new(ObserverString::new()));
         o.register(s4.clone());
 
         assert_eq!(*s1.borrow().value.as_ref().unwrap(), v);
