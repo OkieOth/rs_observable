@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{Receiver, Sender};
+use std::fmt::{self, Debug, Formatter};
 
+#[derive(Debug)]
 struct StoredObserver<T> {
     tx: Sender<T>,
     id: u32,
@@ -18,6 +20,15 @@ impl<T> StoredObserver<T> {
 pub struct ChObservable<T: Clone> {
     observers: Arc<Mutex<Vec<StoredObserver<T>>>>,
     next_id: u32,
+}
+
+impl<T: Clone + Debug> Debug for ChObservable<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ChObservable")
+            .field("observers", &self.observers)
+            .field("next_id", &self.next_id)
+            .finish()
+    }
 }
 
 impl<T: Clone> ChObservable<T> {

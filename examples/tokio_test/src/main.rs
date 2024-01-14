@@ -14,6 +14,17 @@ struct ObserverObj {
     h: Option<JoinHandle<()>>,
 }
 
+impl Clone for ObserverObj {
+    fn clone(&self) -> Self {
+        ObserverObj {
+            v: self.v.clone(),
+            id: self.id.clone(),
+            h: None,
+        }
+    }
+}
+
+
 impl ObserverObj {
     pub fn new() -> Self {
         let o = ObserverObj {
@@ -104,6 +115,8 @@ async fn main() {
     check_val(o1.id.unwrap(), &o1.v, &expected_none);
     check_val(o2.id.unwrap(), &o2.v, &expected_none);
     check_val(o3.id.unwrap(), &o3.v, &expected_none);
+    let mut watch_o1 = ChObservable::<Arc<Mutex<Option<String>>>,>::new();
+    watch_o1.register()
     let t1 = "test-99".to_string();
     match cho.notify(&t1).await {
         Ok(()) => (),
