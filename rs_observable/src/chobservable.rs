@@ -81,6 +81,56 @@ impl<T: Clone> ChObservable<T> {
     }
 }
 
+struct ChObservedValue<T: Clone> {
+    value: Arc<Mutex<Option<T>>>,
+    observable: Arc<Mutex<ChObservable<Option<T>>>>,
+}
+
+impl<T: Clone> ChObservedValue<T> {
+    pub fn new() -> Self {
+        ChObservedValue {
+            observable: Arc::new(Mutex::new(ChObservable::<Option<T>>::new())),
+            value: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    async fn set_value_impl(&mut self, v: Option<T>) {
+        let mut g = self.value.lock().await;
+        let o: &mut Option<T> = &mut g;
+        *o = v;
+    }
+
+    async fn notify_impl(&mut self, v: &Option<T>) {
+        let mut g = self.observable.lock().await;
+        let o: &mut ChObservable<Option<T>> = &mut g;
+        o.notify(v).await;
+    }
+
+    pub async fn set_value(&mut self, v: &T) {
+        let new_v = Some(v.clone());
+        self.set_value_impl(new_v.clone()).await;
+        self.notify_impl(&new_v).await;
+    }
+
+    pub async fn reset_value(&mut self) {
+        let new_v = None;
+        self.set_value_impl(None).await;
+        self.notify_impl(&new_v).await;
+    }
+
+    pub async fn register(&mut self) -> (u32, Receiver<Option<T>>) {
+        let mut g = self.observable.lock().await;
+        let o: &mut ChObservable<Option<T>> = &mut g;
+        o.register().await
+    }
+
+    pub async fn unregister(&mut self, observer_id: u32) {
+        let mut g = self.observable.lock().await;
+        let o: &mut ChObservable<Option<T>> = &mut g;
+        o.unregister(observer_id).await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use env_logger::Env;
@@ -99,8 +149,8 @@ mod tests {
         pub id: Option<u32>,
         h: Option<JoinHandle<()>>,
     }
-    
-    
+
+
     impl ObserverObj {
         pub fn new() -> Self {
             let o = ObserverObj {
@@ -111,13 +161,13 @@ mod tests {
             };
             o
         }
-    
+
         pub async fn observe(&mut self)-> (u32, Receiver<String>) {
             let mut g = self.observable.lock().await;
             let o: &mut ChObservable<String> = &mut g;
             o.register().await
         }
-    
+
         pub async fn register(&mut self, cho: &mut ChObservable<String>) {
             let (id, mut rx) = cho.register().await;
             self.id = Some(id);
@@ -147,14 +197,12 @@ mod tests {
                     };
                 };
             });
-    
             self.h = Some(h);
         }
     }
-    
+
     //#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     #[test]
-
     fn dummy() {
         let env = Env::default().filter_or("LOG_LEVEL", "info");
         env_logger::init_from_env(env);
