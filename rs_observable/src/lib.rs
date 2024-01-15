@@ -5,4 +5,4 @@ mod chobservable;
 
 pub use observable::{Observer, Observable};
 pub use observed_value::ObservedValue;
-pub use chobservable::ChObservable;
+pub use chobservable::{ChObservable, ChObservedValue};

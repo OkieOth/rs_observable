@@ -81,7 +81,7 @@ impl<T: Clone> ChObservable<T> {
     }
 }
 
-struct ChObservedValue<T: Clone> {
+pub struct ChObservedValue<T: Clone> {
     value: Arc<Mutex<Option<T>>>,
     observable: Arc<Mutex<ChObservable<Option<T>>>>,
 }
@@ -129,6 +129,15 @@ impl<T: Clone> ChObservedValue<T> {
         let o: &mut ChObservable<Option<T>> = &mut g;
         o.unregister(observer_id).await;
     }
+
+    pub fn value_ref(&self) -> &Arc<Mutex<Option<T>>> {
+        &self.value
+    }
+
+    pub fn value_mutref(&mut self) -> &mut Arc<Mutex<Option<T>>> {
+        &mut self.value
+    }
+
 }
 
 #[cfg(test)]
@@ -140,7 +149,7 @@ mod tests {
     use tokio::task::JoinHandle;
     use tokio::sync::mpsc::Receiver;
 
-    use crate::chobservable::ChObservable;
+    use crate::chobservable::{ChObservable, ChObservedValue};
 
     #[derive(Debug)]
     struct ObserverObj {
@@ -201,80 +210,195 @@ mod tests {
         }
     }
 
-    //#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    #[test]
-    fn dummy() {
-        let env = Env::default().filter_or("LOG_LEVEL", "info");
-        env_logger::init_from_env(env);
-
-        async fn check_val(id: u32, ov: &Arc<Mutex<Option<String>>>, expected: &Option<String>) {
-            let g = ov.lock().await;
-            let v: &Option<String> = &g;
-            println!("Observer [id={}], content: {:?}", id, v);
-            assert_eq!(v, expected);
-        }
-        async fn check_val2(id: u32, rx: &mut Receiver<String>, expected: &String) {
-            debug!("[id2={}]i am waiting to get informed ...", id);
-            match rx.recv().await {
-                Some(v) => {
-                    debug!("[id2={}]i was informed", id);
-                    assert_eq!(v, *expected);
-                },
-                None => {
-                    debug!("[id2={}]i was informed 2", id);
-                    assert!(false);
-                },
-            };
-        }
-
-        tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(async {
-                let mut cho: ChObservable<String> = ChObservable::new();
-                let mut o1: ObserverObj = ObserverObj::new();
-                o1.register(&mut cho).await;
-                let (_, mut o1_rx) = o1.observe().await;
-                let mut o2: ObserverObj = ObserverObj::new();
-                o2.register(&mut cho).await;
-                let (_, mut o2_rx) = o2.observe().await;
-                let mut o3: ObserverObj = ObserverObj::new();
-                o3.register(&mut cho).await;
-                let (_, mut o3_rx) = o3.observe().await;
-                let expected_none = None;
-                check_val(o1.id.unwrap(), &o1.v, &expected_none).await;
-                check_val(o2.id.unwrap(), &o2.v, &expected_none).await;
-                check_val(o3.id.unwrap(), &o3.v, &expected_none).await;
-                let t1 = "test-99".to_string();
-                match cho.notify(&t1).await {
-                    Ok(()) => (),
-                    Err(_) => assert!(false, "receive error while notify"),
-                };
-            
-                let expected_1 = Some(t1.clone());
-                // since notify is async we have to way until the value have changed
-                check_val2(o1.id.unwrap(), &mut o1_rx, &t1).await;
-                check_val2(o2.id.unwrap(), &mut o2_rx, &t1).await;
-                check_val2(o3.id.unwrap(), &mut o3_rx, &t1).await;
-            
-                let mut o4: ObserverObj = ObserverObj::new();
-                o4.register(&mut cho).await;
-                let (_, mut o4_rx) = o4.observe().await;
-                check_val(o1.id.unwrap(), &o1.v, &expected_1).await;
-                check_val(o2.id.unwrap(), &o2.v, &expected_1).await;
-                check_val(o3.id.unwrap(), &o3.v, &expected_1).await;
-                check_val(o4.id.unwrap(), &o4.v, &expected_none).await;
-            
-                let t2 = "test-999".to_string();
-                match cho.notify(&t2).await {
-                    Ok(()) => (),
-                    Err(_) => assert!(false, "receive error while notify"),
-                };
-                check_val2(o1.id.unwrap(), &mut o1_rx, &t2).await;
-                check_val2(o2.id.unwrap(), &mut o2_rx, &t2).await;
-                check_val2(o3.id.unwrap(), &mut o3_rx, &t2).await;
-                check_val2(o4.id.unwrap(), &mut o4_rx, &t2).await;
-            });
+    async fn check_val(id: u32, ov: &Arc<Mutex<Option<String>>>, expected: &Option<String>) {
+        let g = ov.lock().await;
+        let v: &Option<String> = &g;
+        println!("Observer [id={}], content: {:?}", id, v);
+        assert_eq!(v, expected);
     }
+    async fn check_val2(id: u32, rx: &mut Receiver<String>, expected: &String) {
+        debug!("[id2={}]i am waiting to get informed ...", id);
+        match rx.recv().await {
+            Some(v) => {
+                debug!("[id2={}]i was informed", id);
+                assert_eq!(v, *expected);
+            },
+            None => {
+                debug!("[id2={}]i was informed 2", id);
+                assert!(false);
+            },
+        };
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_chobservable_single() {
+
+        let mut cho: ChObservable<String> = ChObservable::new();
+        let mut o1: ObserverObj = ObserverObj::new();
+        o1.register(&mut cho).await;
+        let (_, mut o1_rx) = o1.observe().await;
+        let mut o2: ObserverObj = ObserverObj::new();
+        o2.register(&mut cho).await;
+        let (_, mut o2_rx) = o2.observe().await;
+        let mut o3: ObserverObj = ObserverObj::new();
+        o3.register(&mut cho).await;
+        let (_, mut o3_rx) = o3.observe().await;
+        let expected_none = None;
+        check_val(o1.id.unwrap(), &o1.v, &expected_none).await;
+        check_val(o2.id.unwrap(), &o2.v, &expected_none).await;
+        check_val(o3.id.unwrap(), &o3.v, &expected_none).await;
+        let t1 = "test-99".to_string();
+        match cho.notify(&t1).await {
+            Ok(()) => (),
+            Err(_) => assert!(false, "receive error while notify"),
+        };
+    
+        let expected_1 = Some(t1.clone());
+        // since notify is async we have to way until the value have changed
+        check_val2(o1.id.unwrap(), &mut o1_rx, &t1).await;
+        check_val2(o2.id.unwrap(), &mut o2_rx, &t1).await;
+        check_val2(o3.id.unwrap(), &mut o3_rx, &t1).await;
+    
+        let mut o4: ObserverObj = ObserverObj::new();
+        o4.register(&mut cho).await;
+        let (_, mut o4_rx) = o4.observe().await;
+        check_val(o1.id.unwrap(), &o1.v, &expected_1).await;
+        check_val(o2.id.unwrap(), &o2.v, &expected_1).await;
+        check_val(o3.id.unwrap(), &o3.v, &expected_1).await;
+        check_val(o4.id.unwrap(), &o4.v, &expected_none).await;
+    
+        let t2 = "test-999".to_string();
+        match cho.notify(&t2).await {
+            Ok(()) => (),
+            Err(_) => assert!(false, "receive error while notify"),
+        };
+        check_val2(o1.id.unwrap(), &mut o1_rx, &t2).await;
+        check_val2(o2.id.unwrap(), &mut o2_rx, &t2).await;
+        check_val2(o3.id.unwrap(), &mut o3_rx, &t2).await;
+        check_val2(o4.id.unwrap(), &mut o4_rx, &t2).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_chobservable() {
+        let mut cho: ChObservable<String> = ChObservable::new();
+        let mut o1: ObserverObj = ObserverObj::new();
+        o1.register(&mut cho).await;
+        let (_, mut o1_rx) = o1.observe().await;
+        let mut o2: ObserverObj = ObserverObj::new();
+        o2.register(&mut cho).await;
+        let (_, mut o2_rx) = o2.observe().await;
+        let mut o3: ObserverObj = ObserverObj::new();
+        o3.register(&mut cho).await;
+        let (_, mut o3_rx) = o3.observe().await;
+        let expected_none = None;
+        check_val(o1.id.unwrap(), &o1.v, &expected_none).await;
+        check_val(o2.id.unwrap(), &o2.v, &expected_none).await;
+        check_val(o3.id.unwrap(), &o3.v, &expected_none).await;
+        let t1 = "test-99".to_string();
+        match cho.notify(&t1).await {
+            Ok(()) => (),
+            Err(_) => assert!(false, "receive error while notify"),
+        };
+    
+        let expected_1 = Some(t1.clone());
+        // since notify is async we have to way until the value have changed
+        check_val2(o1.id.unwrap(), &mut o1_rx, &t1).await;
+        check_val2(o2.id.unwrap(), &mut o2_rx, &t1).await;
+        check_val2(o3.id.unwrap(), &mut o3_rx, &t1).await;
+    
+        let mut o4: ObserverObj = ObserverObj::new();
+        o4.register(&mut cho).await;
+        let (_, mut o4_rx) = o4.observe().await;
+        check_val(o1.id.unwrap(), &o1.v, &expected_1).await;
+        check_val(o2.id.unwrap(), &o2.v, &expected_1).await;
+        check_val(o3.id.unwrap(), &o3.v, &expected_1).await;
+        check_val(o4.id.unwrap(), &o4.v, &expected_none).await;
+    
+        let t2 = "test-999".to_string();
+        match cho.notify(&t2).await {
+            Ok(()) => (),
+            Err(_) => assert!(false, "receive error while notify"),
+        };
+        check_val2(o1.id.unwrap(), &mut o1_rx, &t2).await;
+        check_val2(o2.id.unwrap(), &mut o2_rx, &t2).await;
+        check_val2(o3.id.unwrap(), &mut o3_rx, &t2).await;
+        check_val2(o4.id.unwrap(), &mut o4_rx, &t2).await;
+    }
+
+    async fn check_val3(id: u32, rx: &mut Receiver<Option<String>>, expected: &String) {
+        debug!("[id2={}]i am waiting to get informed ...", id);
+        match rx.recv().await {
+            Some(v) => {
+                debug!("[id2={}]i was informed", id);
+                assert_eq!(v.unwrap(), *expected);
+            },
+            None => {
+                debug!("[id2={}]i was informed 2", id);
+                assert!(false);
+            },
+        };
+    }
+
+    async fn check_val5(id: u32, rx: &mut Receiver<Option<String>>) {
+        debug!("[id2={}]i am waiting to get informed ...", id);
+        match rx.recv().await {
+            Some(o) => {
+                debug!("[id2={}]i was informed", id);
+                assert_eq!(o, Option::None);
+            },
+            None => {
+                debug!("[id2={}]i was informed 2", id);
+                assert!(false);
+            },
+        };
+    }
+
+    async fn check_val4(cho: &ChObservedValue<String>, expected: &Option<String>) {
+        let r = cho.value_ref();
+        let g = r.lock().await;
+        let os: &Option<String> = &g;
+        assert_eq!(*os, *expected);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_chobservedvalue() {
+        let mut cho: ChObservedValue<String> = ChObservedValue::new();
+        let (id1,mut rx1) = cho.register().await;
+        let (id2,mut rx2) = cho.register().await;
+        let (id3,mut rx3) = cho.register().await;
+
+        check_val4(&cho, &Option::None).await;
+
+        let t1 = "test-99".to_string();
+        cho.set_value(&t1).await;
+
+        let expected_1 = Some(t1.clone());
+        // since notify is async we have to way until the value have changed
+        check_val3(id1, &mut rx1, &t1).await;
+        check_val3(id2, &mut rx2, &t1).await;
+        check_val3(id3, &mut rx3, &t1).await;
+
+        let (id4,mut rx4) = cho.register().await;
+
+        check_val4(&cho, &expected_1).await;
+
+        let t2 = "test-999".to_string();
+        cho.set_value(&t2).await;
+
+        check_val3(id1, &mut rx1, &t2).await;
+        check_val3(id2, &mut rx2, &t2).await;
+        check_val3(id3, &mut rx3, &t2).await;
+        check_val3(id4, &mut rx4, &t2).await;
+
+        let expected_2 = Some(t2);
+        check_val4(&cho, &expected_2).await;
+
+        cho.reset_value().await;
+
+        check_val5(id1, &mut rx1).await;
+        check_val5(id2, &mut rx2).await;
+        check_val5(id3, &mut rx3).await;
+        check_val5(id4, &mut rx4).await;
+    }
+
 }
