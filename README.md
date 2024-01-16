@@ -1,4 +1,5 @@
 [![ci](https://github.com/OkieOth/rs_observable/actions/workflows/rust.yml/badge.svg)](https://github.com/OkieOth/rs_observable/actions/workflows/rust.yml)
+[![crates.io](https://img.shields.io/crates/v/rs_observable.svg)](https://crates.io/crates/rs_observable)
 
 # TL;DR;
 
