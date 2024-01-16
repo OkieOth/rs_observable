@@ -1,3 +1,6 @@
+/// Implementation of async, tokio based observers. The approach
+/// uses async channels instead of trait callbacks
+
 use log::debug;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -18,8 +21,11 @@ impl<T> StoredObserver<T> {
     }
 }
 
+/// Async, multithreading-ready Observale that use channels instead of callbacks
 pub struct ChObservable<T: Clone> {
+    /// Registered bservers
     observers: Arc<Mutex<Vec<StoredObserver<T>>>>,
+    /// Next available observerId for registrations
     next_id: u32,
 }
 
@@ -34,12 +40,16 @@ impl<T: Clone + Debug> Debug for ChObservable<T> {
 
 impl<T: Clone> ChObservable<T> {
     pub fn new() -> Self {
+        /// creates a new object
         ChObservable {
             observers: Arc::new(Mutex::new(Vec::new())),
             next_id: 1,
         }
     }
 
+    /// This function registers a new observer. It returns the ID of the registered
+    /// observer and a channel receiver to get the new values
+    ///
     pub async fn register(&mut self) -> (u32, Receiver<T>) {
         let mut g = self.observers.lock().await;
         let observers: &mut Vec<StoredObserver<T>> = &mut g;
@@ -51,6 +61,11 @@ impl<T: Clone> ChObservable<T> {
         (id, rx)
     }
 
+    /// This function unregisters an observer.
+    ///
+    /// ## Arguments
+    /// * `observer_id` - ID returned after the registration of an observer
+    ///
     pub async fn unregister(&mut self, observer_id: u32) {
         let mut g = self.observers.lock().await;
         let observers: &mut Vec<StoredObserver<T>> = &mut g;
@@ -68,6 +83,10 @@ impl<T: Clone> ChObservable<T> {
         }
     }
 
+    /// Triggers the notification of the restistered observers.
+    ///
+    /// ## Arguments
+    /// * `data` - data that should be passed to the observers
     pub async fn notify(&self, data: &T) -> Result<(), SendError<T>> {
         debug!("received notify request");
         let mut g = self.observers.lock().await;
@@ -81,18 +100,23 @@ impl<T: Clone> ChObservable<T> {
     }
 }
 
+/// Observable wrapper around a specific value
 pub struct ChObservedValue<T: Clone> {
+    /// Value to be wrapped
     value: Arc<Mutex<Option<T>>>,
+    /// Observable implementation
     observable: Arc<Mutex<ChObservable<Option<T>>>>,
 }
 
 impl<T: Clone> ChObservedValue<T> {
+    /// Creates an new object
     pub fn new() -> Self {
         ChObservedValue {
             observable: Arc::new(Mutex::new(ChObservable::<Option<T>>::new())),
             value: Arc::new(Mutex::new(None)),
         }
     }
+
 
     async fn set_value_impl(&mut self, v: Option<T>) {
         let mut g = self.value.lock().await;
@@ -103,37 +127,56 @@ impl<T: Clone> ChObservedValue<T> {
     async fn notify_impl(&mut self, v: &Option<T>) {
         let mut g = self.observable.lock().await;
         let o: &mut ChObservable<Option<T>> = &mut g;
-        o.notify(v).await;
+        let _ = o.notify(v).await;
     }
 
+    /// Set a new value to the object. All registered observers are
+    /// called to get notified.
+    ///
+    /// ## Arguments
+    /// * `v` - value to set
+    ///
     pub async fn set_value(&mut self, v: &T) {
         let new_v = Some(v.clone());
         self.set_value_impl(new_v.clone()).await;
         self.notify_impl(&new_v).await;
     }
 
+    /// Reset the value of the object. All registered observers are
+    /// called to get notified.
+    ///
     pub async fn reset_value(&mut self) {
         let new_v = None;
         self.set_value_impl(None).await;
         self.notify_impl(&new_v).await;
     }
 
+    /// This function registers a new observer. It returns the ID of the registered
+    /// observer and a channel receiver to get the new values
+    ///
     pub async fn register(&mut self) -> (u32, Receiver<Option<T>>) {
         let mut g = self.observable.lock().await;
         let o: &mut ChObservable<Option<T>> = &mut g;
         o.register().await
     }
 
+    /// This function unregisters an observer.
+    ///
+    /// ## Arguments
+    /// * `observer_id` - ID returned after the registration of an observer
+    ///
     pub async fn unregister(&mut self, observer_id: u32) {
         let mut g = self.observable.lock().await;
         let o: &mut ChObservable<Option<T>> = &mut g;
         o.unregister(observer_id).await;
     }
 
+    /// Returns a reference to the contained value
     pub fn value_ref(&self) -> &Arc<Mutex<Option<T>>> {
         &self.value
     }
 
+    /// Returns a mutable reference to the contained value
     pub fn value_mutref(&mut self) -> &mut Arc<Mutex<Option<T>>> {
         &mut self.value
     }
@@ -142,7 +185,6 @@ impl<T: Clone> ChObservedValue<T> {
 
 #[cfg(test)]
 mod tests {
-    use env_logger::Env;
     use log::debug;
     use std::sync::Arc;
     use tokio::sync::Mutex;

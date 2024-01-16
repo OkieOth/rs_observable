@@ -8,5 +8,5 @@ edition = "2021"
 [dependencies]
 env_logger = "0.10.0"
 log = "0.4.20"
-rs_observable = { path = "../../rs_observable" }
+rs_observable = { path = "../../rs_observable", features = ["tokio"]}
 tokio = { version = "1.29.1", features = ["full"] }

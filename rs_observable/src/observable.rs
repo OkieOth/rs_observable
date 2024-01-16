@@ -3,7 +3,10 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
+/// Trait to implement, to get informed about changes
 pub trait Observer<T: Clone> {
+    /// This function is called by the observer implementation to infrom about 
+    /// changed data
     fn notify(&mut self, data: T);
 }
 
@@ -21,12 +24,16 @@ impl<T: Clone> StoredObserver<T> {
     }
 }
 
+/// Type that provides the functions to orchestrate the Observer implementations
 pub struct Observable<T: Clone> {
+    /// List of registered observers
     observers: Vec<StoredObserver<T>>,
+    /// helper to stores the next ID assigned to a new registered Observer
     next_id: u32,
 }
 
 impl<T: Clone> Observable<T> {
+    /// Creates a new Observable object
     pub fn new() -> Self {
         Observable {
             observers: Vec::new(),
@@ -34,6 +41,12 @@ impl<T: Clone> Observable<T> {
         }
     }
 
+    /// This function registers a new observer. It returns the ID of the registered
+    /// observer.
+    /// 
+    /// ## Arguments
+    /// * `observer` - implementation of the Observer trait that should be registered
+    /// 
     pub fn register(&mut self, observer: Rc<RefCell<dyn Observer<T> + Send + Sync>>) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
@@ -41,6 +54,11 @@ impl<T: Clone> Observable<T> {
         id
     }
 
+    /// This function unregisters an observer.
+    /// 
+    /// ## Arguments
+    /// * `observer_id` - ID returned after the registration of an observer
+    /// 
     pub fn unregister(&mut self, observer_id: u32) {
         let mut found: Option<usize> = None;
         for (i, e) in self.observers.iter().enumerate() {
@@ -54,12 +72,22 @@ impl<T: Clone> Observable<T> {
         }
     }
 
+    /// Triggers the notification of the restistered observers. This
+    /// function takes ownership of the parameter.
+    /// 
+    /// ## Arguments
+    /// * `data` - data that should be passed to the observers
     pub fn notify_observers(&self, data: T) {
         for o in &self.observers {
             o.observer.borrow_mut().notify(data.clone());
         }
     }
 
+    /// Triggers the notification of the restistered observers. This
+    /// function takes no ownership of the parameter.
+    /// 
+    /// ## Arguments
+    /// * `data` - data that should be passed to the observers
     pub fn notify_observers_borrowed(&self, data: &T) {
         for o in &self.observers {
             o.observer.borrow_mut().notify(data.clone());
